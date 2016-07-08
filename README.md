@@ -1,6 +1,9 @@
 # PML_project_apalleja
 
 This repository contains the R markdown document for the final project to complete the Practical Machine Learning course of Coursera.
+We try to predict how an exercise was done (classes) based on 159 predictors.
+
+The dataset can be found here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
 
 IMPORTANT NOTE: I apologize upfront because I could not generate an HTML file. I work directly with RStudio configured to work in a server. I just found out that I am missing the pango cairo library, which makes impossible to generate reports using knit. See the following information:
 #https://support.rstudio.com/hc/en-us/community/posts/200642948-RStudio-Server-unable-to-open-connection-to-X11-display
