@@ -1,0 +1,166 @@
+---
+title: "Prediction_project"
+author: "Albert Palleja"
+date: "06/07/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Practical Machine learning - Prediction Project
+
+This is an R Markdown document dedicated to the final prediction project for the Practical Machine learning course at Coursera.
+
+Already working in the directory I downloaded the data from 
+Training set --> https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+Testing set (validation) -->  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+```{r reading data}
+
+# Reading the training and testing data and checking it
+training = read.csv("pml-training.csv", header=TRUE, na.strings = c("NA", "", "#DIV/0!"))
+testing = read.csv("pml-testing.csv", header=TRUE, na.strings = c("NA", "", "#DIV/0!"))
+
+dim(training)
+
+dim(testing)
+```
+
+## Cleaning up the data
+``` {r }
+library(caret)
+
+## 1. I remove variables containing NA
+no.NA<-apply(training, 2, function(x) !any(is.na(x)))
+
+training.noNA<-training[, no.NA]
+
+dim(training.noNA) 
+# I end up with 60 predictors
+
+## 2. I remove some predictors that seem to me irrelevant for the prediction:
+training.noNA.clean<-training.noNA[,-c(1:7)]
+dim(training.noNA.clean)  # I end up with 53 predictors
+
+## 3. I finally remove predictors with near zero variance
+predictors.near0Var<-nearZeroVar(training.noNA.clean, saveMetrics = TRUE)
+head(predictors.near0Var)
+train.clean<-training.noNA.clean[,predictors.near0Var$nzv==FALSE]
+dim(train.clean) 
+# At the end I am left with 52 predictors plus the variable to predict (classe)
+
+## I apply the same preprocessing to the testing set (validation set):
+test.clean<-testing[, names(train.clean[,-53])]
+dim(test.clean)
+```
+
+## Partitioning the data into training and testing data
+I split the training data into a train set and a test set. 
+The latter one will be used to estimate the out of sample error
+Considering we have a rather large sample size, the data is partitioned into 60% samples for training and 40% samples for testing. 
+The testing set provided I will keep it for validation
+``` {r partitioning data}
+
+set.seed(333)
+inTrain = createDataPartition(train.clean$classe, p = 0.6, list=FALSE)
+
+training = train.clean[ inTrain,]
+head(training)
+dim(training) 
+# 11,776 samples for fitting a model
+
+testing = train.clean[-inTrain,]
+head(testing)
+dim(testing) 
+# 7,846 samples to predict on and find out the out of samples error
+
+```
+
+## Model fitting and prediction
+I use a bunch of machine learning advanced classification algorithms to assess which of them provide the lowest out of error sample for this project. For doing that I fit various models to the data using the training set,
+
+I choose the model on the test set and I try only once in the validation set to get the prediction.
+
+## Prediction with decision trees
+``` {r decision tree}
+# Needed to grow a tree
+library(rpart)
+
+set.seed(12345)
+modFit.tree<-rpart(classe~., method="class", data = training)
+
+print(modFit.tree)
+
+# I could not install rattle because an R version problem for a package that rattle depends on (GTK and RGtk2)
+# I print the tree model and plot it in a not so good looking way  to find out which predictors 
+# drive the splits in the decision tree
+plot(modFit.tree, uniform=TRUE, main="Classification tree")
+text(modFit.tree, use.n=TRUE, all=TRUE, cex=.8)
+
+pred.train.tree<-predict(modFit.tree, newdata = training, type = "class")
+confusionMatrix(pred.train.tree, training$classe)
+
+pred.tree<-predict(modFit.tree, newdata=testing,  type = "class")
+confusionMatrix(pred.tree, testing$classe)
+
+```
+
+Accuracy for in-sample is 0.7475 and for out-sample is 0.7388. 
+So the algorithm performs quite well predicting in the training and testing set. 
+As expected the out-of sample error is higher that the in-sample error.
+
+## Predicting by random forest
+
+Now we are growing different trees introducing some randomness on them. This method is more powerful and usually yields better accuracy than only using one tree as I did above.
+To avoid overfitting we use cross validation 
+(10-fold it is usually a good compromise between bias and variance)
+
+``` {r random forest}
+fitControl<-trainControl(method="cv", number=10, verbose=FALSE)
+modFit.rf<-train(classe~., data=training, method="rf", trControl=fitControl, verbose=FALSE)
+print(modFit.rf)
+
+pred.train.rf<-predict(modFit.rf, newdata = training)
+confusionMatrix(pred.train.rf, training$classe)
+
+pred.rf<-predict(modFit.rf, newdata = testing)
+confusionMatrix(pred.rf, testing$classe)
+
+```
+
+Accuracy for in-sample is 1 and for out-sample is 0.9915. 
+So the algorithm performs amazingly well predicting if the exercise has been done in the right way (classA) or in a wrong way (the other classes).
+
+## Predicting with generalized boosted regression
+I finally try to predict using a boosting algorithm to assess if it can do better than random forest as it usually performs with high accuracy as well. 
+This algorithm up and down-weights the predictors and combine them.
+I use again 10-fold CV to avoid overfitting
+
+``` {r GBR}
+library("gbm")
+modFit.gbm<-train(classe~., data=training, method="gbm", trControl=fitControl, verbose=FALSE)
+print(modFit.gbm$finalModel)
+
+pred.train.gbm<-predict(modFit.gbm, newdata=training)
+confusionMatrix(pred.train.gbm, training$classe)
+
+pred.gbm<-predict(modFit.gbm, newdata = testing)
+confusionMatrix(pred.gbm, testing$classe)
+
+```
+
+Accuracy for in-sample is 0.9741 and for out-sample is 0.9578. So this algorithm performs also pretty well predicting the different ways to do the exercise, but slightly worse than random forest
+
+## Prediction in the validation test
+
+Since I obtain the highest accuracy and thus lowest out of sample error using random forest (0.9915) I proceed with that algorithm to predict within the validation test
+
+``` {r validation}
+
+pred.valid.test<-predict(modFit.rf, newdata = test.clean)
+
+# To see the prediction results
+#print(pred.valid.test)
+
+```
